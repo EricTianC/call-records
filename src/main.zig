@@ -34,26 +34,20 @@ pub fn main() !void {
     //     const receiverCode: [2]u8 = .{ '0', '1' };
     // }
 
-    var last_ptr: []const u8 = &(file[0].number);
     for (file) |entry| {
         // const keyP = file[i].number; // HashMap 不拥有 key，坑
         var key = try allocator.alloc(u8, 11); // 创建新内存空间
         for (entry.number, 0..) |value, i| {
             key[i] = value;
         }
+
         const period = entry.period;
 
         const seconds = try std.fmt.parseInt(u64, &period, 10);
         const minutes: u64 = if (seconds == 0) 0 else @divFloor(seconds - 1, 60) + 1;
         const kind = entry.kind;
 
-        // std.debug.print("key: {s}, kind: {s}, period: {s}, seconds: {}, miniutes: {}\n", .{ key, kind, period, seconds, miniutes });
-
         const target = try map.getOrPut(key);
-        // std.debug.print("{}\n", .{target.found_existing});
-        // std.debug.print("{s}\n", .{target.key_ptr.*});
-        // std.debug.print("{s}, {}, {s}\n", .{ last_ptr, last_i, file[last_i].number });
-        // std.debug.print("{s}, {}, {s}\n", .{ &last_ptr, last_i, &&file[last_i].number });
         if (target.found_existing) {
             // 计算费用
             if (kind[1] == '0') {
@@ -69,12 +63,7 @@ pub fn main() !void {
                 target.value_ptr.* = 20 * minutes;
             }
         }
-        // std.debug.print("after: {s}\n", .{target.key_ptr.*});
-        last_ptr = target.key_ptr.*;
     }
-
-    std.debug.print("peek at the map {?}\n", .{map.get("13955191490")});
-    std.debug.print("peek at the map {?}\n", .{map.get("13905603192")});
 
     // 将所有费用存储到 bills.txt 中
     const bills_file = try std.fs.cwd().createFile("bills.txt", .{});
