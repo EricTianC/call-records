@@ -1,0 +1,4 @@
+*.doc
+*.dat
+.zig-cache/
+zig-out/
