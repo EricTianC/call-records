@@ -2,7 +2,7 @@ const std = @import("std");
 
 pub const RecordEntry = struct {
     number: [11]u8,
-    type: [2]u8,
+    kind: [2]u8,
     period: [4]u8,
     location: [4]u8,
     newline: [2]u8,
