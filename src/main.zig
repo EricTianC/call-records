@@ -1,92 +1,118 @@
+//! 力图实现实验 8 的理论最优：（以下为原题）
+//! 数据文件是某移动电话公司的用户通话记录，约10万用户一天的通话记录，共大约100万条记录，文件中记录为定长，包含如下数据域：
+//! 数据域内容    长度              说明
+//! 手机号码      Char(11)
+//! 通话类型      Char(2)          00-主叫，01-被叫
+//! 通话时长      Char(4)          单位：秒，右对齐左补零
+//! 呼叫发生小区  Char(4)
+//! 换行符        Char(2)          \r\n
+
 const std = @import("std");
-const pdata = @import("pdata.zig");
+
+pub const RecordEntry = struct {
+    number: [11]u8,
+    kind: [2]u8,
+    period: [4]u8,
+    location: [4]u8,
+    newline: [2]u8,
+};
 
 const datafile = "gsm.dat";
 
 pub fn main() !void {
-    // 打开文件
-    const file_handle = try std.fs.cwd().openFile(datafile, .{});
-    const size = try file_handle.getEndPos();
+    // var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    // defer arena.deinit();
+    // const allocator = arena.allocator();
+    var timer = try std.time.Timer.start();
 
-    // var gpa = std.heap.GeneralPurposeAllocator(.{}).init;
-    // const allocator = gpa.allocator();
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer arena.deinit();
-    const allocator = arena.allocator();
+    const memory_buffer = try std.heap.page_allocator.alloc(u8, 27_000_000);
+    defer std.heap.page_allocator.free(memory_buffer);
+    // var memory_buffer: [27_000_000]u8 = undefined; // 栈不够大导致的 qwq
+    var fba = std.heap.FixedBufferAllocator.init(memory_buffer);
+    const allocator = fba.allocator();
 
+    // 载入数据
+    const file_handler = try std.fs.cwd().openFile(datafile, .{});
+    const size = try file_handler.getEndPos();
     const file_bytes = try allocator.alloc(u8, size);
-    defer allocator.free(file_bytes);
+    _ = try file_handler.readAll(file_bytes);
+    file_handler.close();
+    const file: []RecordEntry = std.mem.bytesAsSlice(RecordEntry, file_bytes);
 
-    _ = try file_handle.readAll(file_bytes);
-    file_handle.close();
-
-    const file: []pdata.RecordEntry = std.mem.bytesAsSlice(pdata.RecordEntry, file_bytes);
-    // std.debug.print("loaded {s}: {} Bytes\n", .{ datafile, size });
-    // std.debug.print("first entry: {}\n", .{file[0]});
-
-    var map = std.StringHashMap(u64).init(allocator);
+    var map = std.AutoHashMap(u64, u64).init(allocator); // TODO: 使用自定义的最小完美哈希 HashMap
     defer map.deinit();
-
-    // try map.ensureTotalCapacity(@intCast(file.len));
     try map.ensureTotalCapacity(10_0000);
 
-    // comptime {
-    //     const senderCode: [2]u8 = .{ '0', '0' };
-    //     const receiverCode: [2]u8 = .{ '0', '1' };
-    // }
-    var flag_all_prefix139 = true;
-
     for (file) |*entry| {
-        // const keyP = file[i].number; // HashMap 不拥有 key，坑
-        const keyP = &entry.number;
-        if (keyP[0] != '1' or keyP[1] != '3' or keyP[2] != '9') {
-            flag_all_prefix139 = false;
-        }
+        const number: u64 = std.mem.bytesToValue(u64, entry.number[3..]);
+        const minute = periodToMinute(&(entry.period));
 
-        const period = entry.period;
-
-        const seconds = try std.fmt.parseInt(u64, &period, 10);
-        const minutes: u64 = if (seconds == 0) 0 else @divFloor(seconds - 1, 60) + 1;
-        const kind = entry.kind;
-
-        const target = try map.getOrPut(keyP);
+        const target = try map.getOrPut(number);
         if (target.found_existing) {
-            // 计算费用
-            if (kind[1] == '0') {
-                target.value_ptr.* += 40 * minutes;
+            if (entry.kind[1] == '0') {
+                target.value_ptr.* += 40 * minute;
             } else {
-                target.value_ptr.* += 20 * minutes;
+                target.value_ptr.* += 20 * minute;
             }
         } else {
-            // 计算费用
-            if (kind[1] == '0') {
-                target.value_ptr.* = 40 * minutes;
+            if (entry.kind[1] == '0') {
+                target.value_ptr.* = 40 * minute;
             } else {
-                target.value_ptr.* = 20 * minutes;
+                target.value_ptr.* = 20 * minute;
             }
         }
     }
-    // std.debug.print("all numbers start with 139: {}\n", .{flag_all_prefix139});
 
-    // 将所有费用存储到 bills.txt 中
-    const bills_file = try std.fs.cwd().createFile("bills.txt", .{});
-    defer bills_file.close();
+    const bills_file_handler = try std.fs.cwd().createFile("bills.txt", .{});
+    defer bills_file_handler.close();
 
-    const bills_writer = bills_file.writer();
-    var bills_writer_buffered = std.io.BufferedWriter(20 * 10_0000, @TypeOf(bills_writer)){ .unbuffered_writer = bills_writer };
+    const bills_writer = bills_file_handler.writer();
 
-    var buffered_writer = bills_writer_buffered.writer();
+    // var buffer: []u8 = allocator.alloc(u8, map.count() * (11 + 2 + 5 + 2)); // number + ": " + bill + "\r\n"
+    // defer allocator.free(buffer);
 
-    var iterator = map.iterator();
+    // TODO: Optimize here, 但 writer.print 是 comptime 的，应该不会有太大的性能损失（有暂时也没办法了）
 
-    while (iterator.next()) |entry| {
-        const keyP = entry.key_ptr;
-        const value = entry.value_ptr;
+    var buffered_out = std.io.BufferedWriter(
+        10_0000 * (11 + 2 + 4 + 1),
+        @TypeOf(bills_writer),
+    ){ .unbuffered_writer = bills_writer };
 
-        // 将 key 和 value 写入 bills.txt
-        try buffered_writer.print("{s}: {d}\n", .{ keyP.*, value.* });
+    const buffered_writer = buffered_out.writer();
+
+    var iter = map.iterator();
+    while (iter.next()) |entry| {
+        try buffered_writer.print("139{s}: {}\n", .{
+            std.mem.toBytes(entry.key_ptr.*),
+            entry.value_ptr.*,
+        });
     }
-    try bills_writer_buffered.flush();
+    try buffered_out.flush();
 
-    // std.debug.print("bills written to bills.txt\n", .{});
+    const elapsed = timer.read();
+    std.debug.print("used {}.{} ms", .{ @divFloor(elapsed, 1000_000), elapsed % 1000_000 });
+}
+
+inline fn parseDecChar(d: u8) u64 {
+    switch (d) {
+        inline '0' => return 0,
+        inline '1' => return 1,
+        inline '2' => return 2,
+        inline '3' => return 3,
+        inline '4' => return 4,
+        inline '5' => return 5,
+        inline '6' => return 6,
+        inline '7' => return 7,
+        inline '8' => return 8,
+        inline '9' => return 9,
+        else => unreachable,
+    }
+}
+
+fn periodToMinute(period: *const [4]u8) u64 {
+    var seconds: u64 = 0;
+    inline for (period) |d| {
+        seconds = seconds * 10 + parseDecChar(d);
+    }
+    return if (seconds == 0) 0 else @divFloor(seconds - 1, 60) + 1;
 }
