@@ -8,6 +8,7 @@
 //! 换行符        Char(2)          \r\n
 
 const std = @import("std");
+// const rbtreelib = @import("rbtree");
 
 pub const RecordEntry = struct {
     number: [11]u8,
@@ -20,8 +21,7 @@ pub const RecordEntry = struct {
 const datafile = "gsm.dat";
 
 pub fn main() !void {
-
-    // var timer = try std.time.Timer.start();
+    var timer = try std.time.Timer.start();
 
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
@@ -102,29 +102,29 @@ pub fn main() !void {
     }
     try buffered_out.flush();
 
-    // const elapsed = timer.read();
-    // std.debug.print("used {}.{} ms\n", .{ @divFloor(elapsed, 1000_000), elapsed % 1000_000 });
+    const elapsed = timer.read();
+    std.debug.print("used {}.{} ms\n", .{ @divFloor(elapsed, 1000_000), elapsed % 1000_000 });
 }
 
 /// 高度特化
 const HashMap64 = struct {
     // load_factor: f64 = 0.75,
-    capacity: usize = 13_0000,
-    prime: u64 = 129971,
+    capacity: usize = 15_0000,
+    prime: u64 = 149993,
     count: usize = 0,
     keys: []u64, // 0 为保留的空 key, 使用二次探测法
     values: []u64,
     allocator: std.mem.Allocator,
 
     pub fn init(allocator: std.mem.Allocator) !HashMap64 {
-        var keysSlice = try allocator.alloc(u64, 13_0000);
+        var keysSlice = try allocator.alloc(u64, 15_0000);
         for (0..keysSlice.len) |i| {
             keysSlice[i] = 0;
         } // 未定义的默认 key
         return HashMap64{
             .allocator = allocator,
             .keys = keysSlice,
-            .values = try allocator.alloc(u64, 13_0000),
+            .values = try allocator.alloc(u64, 15_0000),
         };
     }
 
@@ -210,11 +210,12 @@ fn periodToMinute(period: *const [4]u8) u64 {
 }
 
 test HashMap64 {
-    const hmap = try HashMap64.init(std.testing.allocator);
+    var hmap = try HashMap64.init(std.testing.allocator);
     defer hmap.deinit();
 
     const target = hmap.getOrPut(1958);
     try std.testing.expectEqual(false, target.found_existing);
     target.value_ptr.* = 2025;
     try std.testing.expectEqual(2025, hmap.getOrPut(1958).value_ptr.*);
+    try std.testing.expectEqual(1, hmap.count);
 }
