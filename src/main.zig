@@ -21,24 +21,26 @@ pub fn main() !void {
     file_handle.close();
 
     const file: []pdata.RecordEntry = std.mem.bytesAsSlice(pdata.RecordEntry, file_bytes);
-    std.debug.print("loaded {s}: {} Bytes\n", .{ datafile, size });
-    std.debug.print("first entry: {}\n", .{file[0]});
+    // std.debug.print("loaded {s}: {} Bytes\n", .{ datafile, size });
+    // std.debug.print("first entry: {}\n", .{file[0]});
 
     var map = std.StringHashMap(u64).init(allocator);
     defer map.deinit();
 
-    try map.ensureTotalCapacity(@intCast(@sizeOf(pdata.RecordEntry) * file.len));
+    // try map.ensureTotalCapacity(@intCast(file.len));
+    try map.ensureTotalCapacity(10_0000);
 
     // comptime {
     //     const senderCode: [2]u8 = .{ '0', '0' };
     //     const receiverCode: [2]u8 = .{ '0', '1' };
     // }
+    var flag_all_prefix139 = true;
 
-    for (file) |entry| {
+    for (file) |*entry| {
         // const keyP = file[i].number; // HashMap 不拥有 key，坑
-        var key = try allocator.alloc(u8, 11); // 创建新内存空间
-        for (entry.number, 0..) |value, i| {
-            key[i] = value;
+        const keyP = &entry.number;
+        if (keyP[0] != '1' or keyP[1] != '3' or keyP[2] != '9') {
+            flag_all_prefix139 = false;
         }
 
         const period = entry.period;
@@ -47,7 +49,7 @@ pub fn main() !void {
         const minutes: u64 = if (seconds == 0) 0 else @divFloor(seconds - 1, 60) + 1;
         const kind = entry.kind;
 
-        const target = try map.getOrPut(key);
+        const target = try map.getOrPut(keyP);
         if (target.found_existing) {
             // 计算费用
             if (kind[1] == '0') {
@@ -64,13 +66,14 @@ pub fn main() !void {
             }
         }
     }
+    // std.debug.print("all numbers start with 139: {}\n", .{flag_all_prefix139});
 
     // 将所有费用存储到 bills.txt 中
     const bills_file = try std.fs.cwd().createFile("bills.txt", .{});
     defer bills_file.close();
 
     const bills_writer = bills_file.writer();
-    var bills_writer_buffered = std.io.bufferedWriter(bills_writer);
+    var bills_writer_buffered = std.io.BufferedWriter(20 * 10_0000, @TypeOf(bills_writer)){ .unbuffered_writer = bills_writer };
 
     var buffered_writer = bills_writer_buffered.writer();
 
@@ -85,5 +88,5 @@ pub fn main() !void {
     }
     try bills_writer_buffered.flush();
 
-    std.debug.print("bills written to bills.txt\n", .{});
+    // std.debug.print("bills written to bills.txt\n", .{});
 }
